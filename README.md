@@ -1,95 +1,40 @@
-# Multi-Format Data Concealment Tool
-This tool provides a multi-format steganography solution, allowing you to conceal text data within text, audio, and video files. It leverages various techniques like LSB encoding, Zero-Width Characters (ZWC), and RC4 stream cipher for encryption.
+# Stega-Tool
 
-## Features
+Educational text/audio/video concealment with an explicit UTF-8 byte format. This is earlier learning work, not a secure messaging system. Concealment and CRC checksums do not provide confidentiality, authentication, or resilience to content transformations. The earlier RC4/menu implementation remains in Git history; maintained encoding deliberately makes no encryption claim.
 
-* **Text Steganography:**
-    * Encodes secret text messages within a cover text file using Zero-Width Characters (ZWC).
-    * Decodes hidden messages from stego text files.
-* **Audio Steganography:**
-    * Encodes secret messages into an audio file using Least Significant Bit (LSB) encoding.
-    * Decodes hidden messages from stego audio files.
-* **Video Steganography:**
-    * Encodes secret messages into a specific frame of a video file using LSB encoding and RC4 encryption.
-    * Decodes hidden messages from the specified frame of a stego video file.
+## Setup
 
-## Usage
+Use Python 3.12+, create a virtual environment, and install `requirements.txt`. Text and PCM WAV use the standard library; video requires pinned NumPy/OpenCV. The earlier unused pandas/matplotlib imports are removed.
 
-1. **Clone the repository:**
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt
+python Steganography.py encode text --input Sample_cover_files/cover_text.txt --output stego-text.txt --message 'Hello 🌍'
+python Steganography.py decode text --input stego-text.txt
+```
 
-   ```bash
-   git clone https://github.com/an1ket-s1ngh/Stega-Tool
+Replace `text` with `audio` for an uncompressed PCM WAV. For video, choose a zero-based frame and write lossless AVI:
 
-2. **Navigate to the project directory:**
+```bash
+python Steganography.py encode video --input Sample_cover_files/cover_video.mp4 --output stego-video.avi --frame 0 --message 'Hello'
+python Steganography.py decode video --input stego-video.avi --frame 0
+```
 
-   ```bash
-   cd multi-format-steganography
-   ```
+`--message-file message.txt` preserves multiline text and avoids putting the message in shell arguments. Decoders read the persisted file, including video frames. Video output uses FFV1, requires an OpenCV build with that encoder, and is decoded again before success. It contains video only; source audio tracks are not copied. Lossy MP4 output is rejected because it destroys embedded bits. Do not recompress an encoded file.
 
-3. **Run the tool:**
+## Format and capacity
 
-   ```bash
-    python Steganography.py
-   ```
+The frame is `STG1`, a big-endian 32-bit UTF-8 byte length, a 32-bit CRC32, then the payload. The 12-byte header is included in capacity calculations. Unicode character counts are not byte counts. Unframed legacy files are incompatible and fail clearly rather than returning guessed messages.
 
+- Text embeds one framed byte as four zero-width characters per cover word and preserves visible whitespace. Capacity is `word_count - 12` payload bytes. Reserved zero-width characters in a cover are rejected.
+- WAV embeds one bit per sample in the least-significant byte. Supported sample widths are 8/16/24/32-bit PCM, including multiple channels. Capacity is `floor(sample_count / 8) - 12` payload bytes.
+- Video embeds one bit per color-channel byte of the selected frame. Capacity is `floor(width * height * 3 / 8) - 12` payload bytes. Other frames are written through the lossless codec.
 
+Existing outputs and source overwrites are rejected. Missing/truncated headers, bad checksums, invalid UTF-8, insufficient covers, and nonexistent frames fail. Payloads also have a 128 MiB implementation limit.
 
-3. **Follow the on-screen menu to choose the desired steganography operation and format.**
+## Verification
 
-# Sample Cover Files:
-The "Sample_cover_files" directory contains sample cover files for each format:
+`python -m unittest discover -s tests -v` generates its own covers and verifies fresh-process decode, Unicode, empty/multiline payloads, exact capacities, malformed inputs, sample widths/stereo, frame selection, unchanged other frames, and output failure cleanup. CI does not use private payloads or downloaded media.
 
-**cover_text.txt**
-
-**cover_audio.wav**
-
-**cover_video.mp4**
-
-You can replace these with your own files.
-
-# Code Overview:
-## Text Steganography
-**Encoding:**
-Converts the secret message to binary.
-Applies transformations (XOR with 170) and adds identifiers.
-Embeds the binary data into the cover text file using ZWC.
-
-**Decoding:**
-Extracts the ZWC characters from the stego text file.
-Reverses the transformations to retrieve the original message.
-## Audio Steganography
-**Encoding:**
-Reads the audio file and converts it to a byte array.
-Converts the secret message to binary.
-Embeds the binary data into the least significant bits of the audio data.
-
-**Decoding:**
-Extracts the least significant bits from the stego audio file.
-Converts the binary data back to the original message.
-## Video Steganography
-**Encoding:**
-Reads the video file and selects a specific frame for embedding.
-Encrypts the secret message using RC4.
-Converts the encrypted message to binary.
-Embeds the binary data into the least significant bits of the frame's pixel data.
-
-**Decoding:**
-Extracts the least significant bits from the specified frame of the stego video file.
-Converts the binary data back to the encrypted message.
-Decrypts the message using RC4 to retrieve the original message.
-
-## Dependencies
-**Python 3**
-
-**NumPy**
-
-**OpenCV**
-
-**Matplotlib**
-
-**Wave**
-
-## Note
-This tool is for educational and research purposes only.
-The authors are not responsible for any misuse of this tool.
-The effectiveness of steganography depends on the cover file and the amount of data hidden.
+The bundled covers are historical examples; use generated fixtures or your own permitted material. The [OpenCV VideoWriter documentation](https://docs.opencv.org/5.0/main_modules/classcv_1_1VideoWriter.html) describes the lossless codec requirement.
